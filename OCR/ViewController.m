@@ -20,8 +20,8 @@
     
     // change the image name to your image
     //UIImage* img = [UIImage imageNamed:@"1_sample_complete.png"];
-    //UIImage* img = [UIImage imageNamed:@"2_sample_part.png"];
-    UIImage* img = [UIImage imageNamed:@"3_sample_color.png"];
+    UIImage* img = [UIImage imageNamed:@"2_sample_part.png"];
+    //UIImage* img = [UIImage imageNamed:@"3_sample_color.png"];
     //UIImage* img = [UIImage imageNamed:@"4_sample_jack-ma.png"];
     //UIImageView* initImgView = [[UIImageView alloc] initWithImage:img];
     //[self.view addSubview:initImgView];
@@ -57,8 +57,10 @@
     return rawData;
 }
 
-// line detection core algorithm
 -(UIImage *)convertImageTOBlackNWhite:(UIImage *) image{
+    #pragma line detection
+    // line detection core algorithm
+    
     // step 2 threshold the image
     unsigned char* rawData = [self UIImageToRGBA8:image];
     CGFloat threshold = 0.5;
@@ -103,33 +105,119 @@
                 // last black pixel should also be in
                 [lines addObject:[NSNumber numberWithInt:i]];
                 // draw line to test
+                /*
                 for (int j = 0; j < width; j++) {
                     NSUInteger index = bytesPerRow * i + bytesPerPixel * j;
                     rawData[index] = 255;
                     rawData[index+1] = 102;
                     rawData[index+2] = 102;
                 }
-                //NSLog(@"top: %d", i);
+                */
                 top = true;
             }
         } else {
             if (top) {
-                //NSLog(@"bottom: %d", i);
                 [lines addObject:[NSNumber numberWithInt:i]];
+                /*
                 for (int j = 0; j < width; j++) {
                     NSUInteger index = bytesPerRow * i + bytesPerPixel * j;
                     rawData[index] = 255;
                     rawData[index+1] = 102;
                     rawData[index+2] = 102;
                 }
+                */
                 top = false;
             }
         }
     }
+    free(horiArr); // free memory after use
+    
+    // -- end of line detection core algorithm
+    NSNumber* topLine = (NSNumber*)[lines objectAtIndex:2];
+    NSNumber* bottomLine = (NSNumber*)[lines objectAtIndex:3];
+    [self connectedComponentFromData:rawData withWidth:(int)width betweenTopLine:topLine andBottomLine:bottomLine];
     
     image = [self convertBitmapRGBA8ToUIImage:rawData withWidth:image.size.width withHeight:image.size.height];
     
     return image;
+}
+
+#pragma connected component algorithm
+-(void) connectedComponentFromData:(unsigned char*)rawData withWidth:(int)width
+                    betweenTopLine:(NSNumber*) topLine andBottomLine:(NSNumber*) bottomLine {
+    // ------------- step 1 ----------------------//
+    // ------------ assign label -----------------//
+    NSUInteger bytesPerPixel = 4;
+    NSUInteger bytesPerRow = bytesPerPixel * width;
+    
+    // only test one line
+    int top = [topLine intValue];
+    int bottom = [bottomLine intValue];
+    int height = bottom - top + 1;
+    NSInteger labelArr[height][width]; // C style
+    // init label array
+    for (int i = 0; i < height; i++) {
+        for (int j = 0; j < width; j++) {
+            labelArr[i][j] = 0; // zero means not assigned
+        }
+    }
+    NSInteger parent[width];
+    
+    int labelCount = 0; // label begins with 1
+    
+    for (int i = 0; i < height; i++) {
+        for (int j = 0; j < width; j++) {
+            NSUInteger index = bytesPerRow * i + bytesPerPixel * j;
+            if (rawData[index] == 255) continue; // skip white pixel
+            
+            // step 1.1: search for the min label
+            NSInteger minLabel = 0; // 0 means can't find
+            NSInteger xcorrd[4] = {i, i-1, i-1, i-1};
+            NSInteger ycoord[4] = {j-1, j-1, j, j+1};
+            for (int k = 0; k < 4; k++) {
+                int x = (int) xcorrd[k];
+                int y = (int) ycoord[k];
+                if (labelArr[x][y] == 0) continue; // not assigned value yet
+                if (minLabel == 0) minLabel = labelArr[x][y];
+                else minLabel = minLabel < labelArr[x][y] ? minLabel : labelArr[x][y];
+            }
+
+            // step 1.2: assign value to current pixel
+            if (minLabel == 0) {
+                ++labelCount;
+                labelArr[i][j] = labelCount;
+                parent[labelCount] = labelCount; // set self as the parent
+            } else {
+                labelArr[i][j] = minLabel;
+            }
+            
+            // step 1.3: update parent
+            for (int k = 0; k < 4; k++) {
+                int x = (int) xcorrd[k];
+                int y = (int) ycoord[k];
+                if (labelArr[x][y] == 0) continue;
+                parent[labelArr[x][y]] = minLabel;
+            }
+        }
+    }
+    
+    NSMutableString* test = [[NSMutableString alloc] initWithString:@"\n"];
+    for (int i = 0; i < height; i++) {
+        for (int j = 0; j < width/3; j++) {
+            if (labelArr[i][j] == 0) {
+                [test appendString:@"  "];
+            } else {
+                [test appendString:[NSString stringWithFormat:@"%02d", (int)labelArr[i][j]]];
+            }
+        }
+        [test appendString:@"\n"];
+    }
+    NSLog(@"test result");
+    NSLog(@"%@", test);
+    
+    // ------------- step 2 ----------------------//
+    // ------------- merge label -----------------//
+    
 }
 
 //PLEASE FIND THE BELOW CONVERSION METHODS FROM HERE
