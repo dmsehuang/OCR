@@ -7,6 +7,7 @@
 //
 
 #import "ViewController.h"
+#import "Character.h"
 
 @interface ViewController ()
 
@@ -205,9 +206,9 @@
     for (int i = 0; i < height; i++) {
         for (int j = 0; j < width/3; j++) {
             if (labelArr[i][j] == 0) {
-                [test appendString:@"  "];
+                [test appendString:@" "];
             } else {
-                [test appendString:[NSString stringWithFormat:@"%02d", (int)labelArr[i][j]]];
+                [test appendString:[NSString stringWithFormat:@"%d", (int)labelArr[i][j]]];
             }
         }
         [test appendString:@"\n"];
@@ -217,7 +218,71 @@
     
     // ------------- step 2 ----------------------//
     // ------------- merge label -----------------//
+    // should use weighted quick-union, but the tree is flat in this case
+    // so quick union is quick enough
+    // step 2.1 find root
+    for (int i = 1; i <= labelCount; i++) {
+        NSInteger j = i;
+        while (parent[j] != j) {
+            j = parent[j];
+        }
+        parent[i] = j;
+    }
     
+    // step 2.2 merge
+    NSMutableDictionary* dict = [[NSMutableDictionary alloc] init];
+    for (int i = 0; i < height; i++) {
+        for (int j = 0; j < width; j++) {
+            if (labelArr[i][j] > 0) {
+                NSNumber *mainLabel = [NSNumber numberWithInteger:parent[labelArr[i][j]]];
+                Character* ch = [dict objectForKey:mainLabel];
+                if (ch == nil) {
+                    ch = [[Character alloc] init];
+                }
+                // update character pixel array
+                [ch.pixels_x addObject:[NSNumber numberWithInt:i]];
+                [ch.pixels_y addObject:[NSNumber numberWithInt:j]];
+                [dict setObject:ch forKey:mainLabel];
+                // update character range
+                if (j < ch.left) ch.left = j;
+                if (j > ch.right) ch.right = j;
+                if (i < ch.top) ch.top = i;
+                if (i > ch.bottom) ch.bottom = i;
+            }
+        }
+    }
+    
+    // step 2.3 special case like i, j
+    // this is specail, since we scan the image pixels from left to right
+    // and assign labels, so the smaller labels must has smaller left location
+    // no- the above assumption is wrong, for example, a i, the dot of i has label value 1
+    // sort all the characters
+    NSMutableArray* characters;
+    for (id key in dict) {
+        [characters addObject:[dict objectForKey:key]];
+    }
+    // sort according to left boundary
+    NSSortDescriptor *leftDescriptor = [[NSSortDescriptor alloc] initWithKey:@"left" ascending:YES];
+    NSArray *sortDescriptors = @[leftDescriptor];
+    // sorted characters is same pointer of characters?
+    NSArray *sortedCharacters = [characters sortedArrayUsingDescriptors:sortDescriptors];
+    NSMutableArray *discardCharacters = [[NSMutableArray alloc] init];
+    for (int i = 0; i < [sortedCharacters count] - 1; i++) {
+        Character* ch1 = [sortedCharacters objectAtIndex:i];
+        Character* ch2 = [sortedCharacters objectAtIndex:i+1];
+        if (ch1.right > ch2.left) {
+            // ch1 and ch2 consists a new character
+            NSArray *oldArr_x = [NSArray arrayWithArray:ch2.pixels_x];
+            NSArray *oldArr_y = [NSArray arrayWithArray:ch2.pixels_y];
+            [ch1.pixels_x addObjectsFromArray:oldArr_x];
+            [ch1.pixels_y addObjectsFromArray:oldArr_y];
+            // update boundary
+            ch1.right = ch1.right > ch2.right ? ch1.right : ch2.right;
+            // add ch2 to discard array
+            [discardCharacters addObject:ch2];
+        }
+    }
+    [characters removeObjectsInArray:discardCharacters];
 }
 
 //PLEASE FIND THE BELOW CONVERSION METHODS FROM HERE
